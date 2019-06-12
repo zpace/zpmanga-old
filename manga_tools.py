@@ -36,7 +36,7 @@ l_unit = u.AA
 bandpass_sol_l_unit = u.def_unit(
     s='bandpass_solLum', format={'latex': r'\overbar{\mathcal{L}_{\odot}}'},
     prefixes=False)
-m_to_l_unit = 1. * u.Msun / bandpass_sol_l_unit
+m_to_l_unit = u.Msun / bandpass_sol_l_unit
 
 def read_datacube(fname):
     hdu = fits.open(fname)
