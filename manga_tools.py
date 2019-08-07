@@ -36,7 +36,14 @@ l_unit = u.AA
 bandpass_sol_l_unit = u.def_unit(
     s='bandpass_solLum', format={'latex': r'\overbar{\mathcal{L}_{\odot}}'},
     prefixes=False)
-m_to_l_unit = u.Msun / bandpass_sol_l_unit
+m_to_l_unit = u.def_unit(
+    s='mass_to_light', represents=u.Msun / bandpass_sol_l_unit,
+    format={'latex': r'\frac{M_{\odot}}{\overbar{\mathcal{L}_{\odot}}}'},
+    prefixes=False)
+
+u.add_enabled_units([bandpass_sol_l_unit, m_to_l_unit, Mgy])
+
+fits_formats = ['fits', 'fits.gz']
 
 def read_datacube(fname):
     hdu = fits.open(fname)
@@ -70,12 +77,12 @@ class IFU_DNE_Error(MaNGA_DNE_Error):
     '''
     generic IFU does-not-exist error, for both DRP & DAP
     '''
-    type_of_data = 'unspecified'
 
-    def __init__(self, plate, ifu, fullpath):
+    def __init__(self, plate, ifu, fullpath, type_of_data='unspecified'):
         self.plate = plate
         self.ifu = ifu
         self.fullpath = fullpath
+        self.type_of_data = type_of_data
 
     def __str__(self):
         return '{} product for {}-{} DNE in given location {}'.format(
@@ -122,17 +129,52 @@ def load_dapall(mpl_v, index=None):
 
     return tab
 
-def load_drp_logcube(plate, ifu, mpl_v):
+def load_fits_prefer_uncompress(fnamebase, possible_extensions, type_of_data='unspecified'):
+    '''load FITS file with a base name, preferring one extensions over a lits of others
+    
+    load a FITS file with a base name, but attempt several file extensions in order
+    
+    Parameters
+    ----------
+    fnamebase : str
+        file name base
+        (for "/path/to/file.fits" or "/path/to/file.fits.gz", use "/path/to/file")
+    possible_extensions : list of str
+        list of possible file extensions
+        (for "/path/to/file.fits" or "/path/to/file.fits.gz", use [".fits", "fits.gz"])
+
+    Raises
+    ------
+    IFU_DNE_Error
+        when no valid file found
+    '''
+
+    # loop through preferred file formats
+    for ff in possible_extensions:
+        fname = f'{fnamebase}.{ff}'
+
+        # continue if file not present with current extension
+        if not os.path.isfile(fname):
+            continue
+        # load the first valid file found
+        else:
+            hdulist = fits.open(fname)
+            break
+    # if you reach the end of a list without finding a valid file, raise an error
+    else:
+        raise IFU_DNE_Error(plate, ifu, fname, type_of_data=type_of_data)
+
+    return hdulist
+
+
+def load_drp_logcube(plate, ifu, mpl_v, file_exts=fits_formats):
     drpver = DRP_MPL_versions[mpl_v]
     plate, ifu = str(plate), str(ifu)
-    fname = os.path.join(
-        SAS_BASE_DIR, 'mangawork/manga/spectro/redux/', drpver, plate, 'stack/',
-        '-'.join(('manga', plate, ifu, 'LOGCUBE.fits.gz')))
 
-    if not os.path.isfile(fname):
-        raise DRP_IFU_DNE_Error(plate, ifu, fname)
-
-    hdulist = fits.open(fname)
+    fnamebase = os.path.join(
+            SAS_BASE_DIR, 'mangawork/manga/spectro/redux/', drpver, plate, 'stack/',
+            f'manga-{plate}-{ifu}-LOGCUBE')
+    hdulist = load_fits_prefer_uncompress(fnamebase, file_exts, 'DRP:LOGCUBE')
 
     return hdulist
 
@@ -155,32 +197,14 @@ def get_drp_hdrval(plate, ifu, mpl_v, k):
 def hdu_data_extract(hdulist, names):
     return [hdulist[n].data for n in names]
 
-def load_drp_logcube(plate, ifu, mpl_v):
-    drpver = DRP_MPL_versions[mpl_v]
-    plate, ifu = str(plate), str(ifu)
-    fname = os.path.join(
-        SAS_BASE_DIR, 'mangawork/manga/spectro/redux/', drpver, plate, 'stack/',
-        '-'.join(('manga', plate, ifu, 'LOGCUBE.fits.gz')))
-
-    if not os.path.isfile(fname):
-        raise DRP_IFU_DNE_Error(plate, ifu, fname)
-
-    hdulist = fits.open(fname)
-
-    return hdulist
-
-def load_dap_maps(plate, ifu, mpl_v, kind):
+def load_dap_maps(plate, ifu, mpl_v, kind, file_exts=fits_formats):
     drpver, dapver = DRP_MPL_versions[mpl_v], DAP_MPL_versions[mpl_v]
     plate, ifu = str(plate), str(ifu)
-    fname = os.path.join(
-        SAS_BASE_DIR, 'mangawork/manga/spectro/analysis/', drpver, dapver, kind, plate, ifu,
-        '-'.join(('manga', plate, ifu, 'MAPS',
-                  '{}.fits.gz'.format(kind))))
-
-    if not os.path.isfile(fname):
-        raise DAP_IFU_DNE_Error(plate, ifu, fname)
-
-    hdulist = fits.open(fname)
+    fnamebase = os.path.join(
+        SAS_BASE_DIR, 'mangawork/manga/spectro/analysis',
+        f'{drpver}/{dapver}/{kind}/{plate}/{ifu}', f'manga-{plate}-{ifu}-MAPS-{kind}')
+    
+    hdulist = load_fits_prefer_uncompress(fnamebase, file_exts, 'DAP:MAPS')
 
     return hdulist
 
